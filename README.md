@@ -1,25 +1,32 @@
-# 🔐 Kali Linux 全方位配置脚本
+# 🔐 Kali Linux 全方位配置工具集
 
 > **Author:** Mr.li8848  
-> **Version:** v3.0  
 > **License:** MIT（仅供合法授权使用）
 
 ## ⚠️ 免责声明
 
-本脚本仅供合法的网络安全测试、教学研究、授权渗透测试使用。严禁用于未授权入侵或违反《网络安全法》的行为。使用者自行承担全部法律责任。
+本仓库所有脚本仅供合法的网络安全测试、教学研究、授权渗透测试使用。严禁用于未授权入侵或违反《网络安全法》的行为。使用者自行承担全部法律责任。
 
-## 🚀 快速开始
+---
+
+## 📦 脚本列表
+
+| 脚本 | 用途 | 运行方式 |
+|------|------|----------|
+| `kali-china-setup.sh` | 🔐 Kali 换源/汉化/红蓝队工具链 | `sudo bash kali-china-setup.sh` |
+| `kali-ai-setup.sh` | 🤖 Docker + Lobe Chat + 阿里云百炼 AI | `sudo bash kali-ai-setup.sh` |
+
+---
+
+## 🚀 kali-china-setup — 系统配置
 
 ```bash
-# 1. 下载加密脚本到 Kali
 wget https://raw.githubusercontent.com/Mrli8848/kali-china-setup/main/kali-china-setup.sh
-
-# 2. 运行
 sudo bash kali-china-setup.sh
-# 输入解密密码即可进入主菜单
+# 输入解密密码进入主菜单
 ```
 
-## 📦 功能模块
+### 功能模块
 
 | 模块 | 内容 |
 |------|------|
@@ -29,18 +36,35 @@ sudo bash kali-china-setup.sh
 | **四、CTF 竞赛** | 密码学 · 二进制逆向 · Web 攻防 · 隐写取证 |
 | **五、无线安全** | 网卡驱动 · aircrack-ng · AP 钓鱼 |
 
-## 🔑 加密说明
+### 加密说明
 
-加密版脚本采用 **AES-256-CBC + PBKDF2（10万次迭代）** 加密，运行后需输入密码解密到临时文件执行，执行完自动安全擦除。
+分发版采用 **AES-256-CBC + PBKDF2** 加密，运行时输入密码解密到 `/tmp`，执行完自动安全擦除。
 
-若需自行构建加密版，修改原始脚本后运行：
+---
+
+## 🤖 kali-ai-setup — AI 交互环境
 
 ```bash
-bash build-encrypted.sh
+wget https://raw.githubusercontent.com/Mrli8848/kali-china-setup/main/kali-ai-setup.sh
+sudo bash kali-ai-setup.sh
 ```
+
+### 一键部署
+
+| 步骤 | 内容 |
+|------|------|
+| **① Docker** | 安装 Docker Engine，含镜像加速 |
+| **② Lobe Chat** | Docker 一键部署开源聊天界面 |
+| **③ API 配置** | 用户在阿里云百炼生成 Key → 脚本自动注入 |
+| **④ 语音输入** | Win + H 语音听写 → Kali 输入框打字 |
+
+### 语音输入原理
+
+> Win + H 是 Windows 自带的语音听写功能，不需要在 Kali 里装任何东西。
+> 你在 Kali 里点输入框 → 按 Win + H → 说话 → 文字自动打进去。
+
+---
 
 ## 📝 更新日志
 
-- **v3.0** — 重构为交互式菜单，自动测速选源，新增 CTF/无线/蓝队模块
-- **v2.0** — 增加国内镜像测速对比，自动推荐最快源
-- **v1.0** — 基础换源 + 汉化 + 更新
+- **2026-07** — 新增 kali-ai-setup.sh；kali-china-setup v3.0 发布
