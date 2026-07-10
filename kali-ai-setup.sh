@@ -329,6 +329,92 @@ show_voice_guide() {
 }
 
 # ////////////////////////////////////////////////////////////////////////////
+#  第四步追加：语音验证
+# ////////////////////////////////////////////////////////////////////////////
+test_voice() {
+    banner "🎤 语音输入验证测试"
+
+    echo ""
+    echo -e "   ${BOLD}${WHITE}接下来做一次真实测试，确认 Win + H 能打字到 Kali:${NC}"
+    echo ""
+
+    echo -e "   ${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "   ${BOLD}${WHITE}  ⚠ 现在系统将打开一个文本编辑器${NC}"
+    echo -e "   ${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "   ${CYAN}操作步骤:${NC}"
+    echo -e "   ${CYAN}1.${NC} 编辑器打开后 → ${BOLD}点击编辑区域${NC}"
+    echo -e "   ${CYAN}2.${NC} 左手按下 ${BOLD}Win + H${NC}（Windows 键和 H 键同时按）"
+    echo -e "   ${CYAN}3.${NC} 看到屏幕顶部出现 ${GREEN}"正在聆听..."${NC} 悬浮窗"
+    echo -e "   ${CYAN}4.${NC} 对着麦克风说话：${YELLOW}"你好 Kali 语音测试成功"${NC}"
+    echo -e "   ${CYAN}5.${NC} 确认文字出现在编辑器里"
+    echo -e "   ${CYAN}6.${NC} 关掉编辑器，回到这里回答验证结果"
+    echo ""
+    echo -e "   ${DIM}如果 Win + H 没反应，请切到微软拼音输入法再试${NC}"
+    echo ""
+
+    read -p "$(echo -e "   ${YELLOW}准备好了吗？按 Enter 打开编辑器测试...${NC}")" _
+
+    # 创建一个临时测试文件并打开
+    local TEST_FILE="/tmp/voice-test-$(date +%H%M%S).txt"
+    cat > "$TEST_FILE" << TESTEOF
+╔══════════════════════════════════════════════════════╗
+║  语音输入验证测试                                    ║
+║                                                      ║
+║  请在下方空白处点击鼠标，然后按 Win + H 说话:        ║
+║                                                      ║
+║  ${BOLD}Win + H${NC} = Windows 语音听写快捷键                      ║
+║                                                      ║
+╚══════════════════════════════════════════════════════╝
+
+↓ 说话的内容会出现在这里 ↓
+
+TESTEOF
+
+    # 打开编辑器（优先用 GUI 编辑器，没有就用 nano）
+    if command -v mousepad &>/dev/null; then
+        mousepad "$TEST_FILE" 2>/dev/null &
+    elif command -v gedit &>/dev/null; then
+        gedit "$TEST_FILE" 2>/dev/null &
+    elif command -v kwrite &>/dev/null; then
+        kwrite "$TEST_FILE" 2>/dev/null &
+    elif command -v leafpad &>/dev/null; then
+        leafpad "$TEST_FILE" 2>/dev/null &
+    else
+        echo -e "   ${YELLOW}未找到 GUI 编辑器，用 nano 代替${NC}"
+        echo -e "   ${CYAN}在 nano 里点一下 → 按 Win + H → 说话${NC}"
+        sleep 2
+        nano "$TEST_FILE"
+    fi
+
+    echo ""
+
+    # 询问测试结果
+    local TEST_OK
+    read -p "$(echo -e "   ${YELLOW}Win + H 语音输入测试结果 — 文字打上去了吗？ [Y/n]: ${NC}")" TEST_OK
+    TEST_OK=${TEST_OK:-Y}
+
+    if [[ "$TEST_OK" =~ ^[Yy] ]]; then
+        echo ""
+        echo -e "   ${GREEN}${BOLD}🎉 语音输入验证通过！${NC}"
+        echo -e "   ${DIM}以后在 Kali 的任何输入框里，Win + H → 说话 → 打字，全程有效${NC}"
+    else
+        echo ""
+        echo -e "   ${YELLOW}${BOLD}⚠ 语音输入未通过，请检查:${NC}"
+        echo ""
+        echo -e "   ${CYAN}1.${NC} 输入法是否切到 ${BOLD}微软拼音${NC}？（Win + 空格切换）"
+        echo -e "   ${CYAN}2.${NC} Windows 设置 → 隐私 → 语音 → ${BOLD}在线语音识别${NC} 是否打开？"
+        echo -e "   ${CYAN}3.${NC} 麦克风是否正常工作？（Windows 设置 → 声音 → 测试麦克风）"
+        echo -e "   ${CYAN}4.${NC} 电脑是否联网？（语音识别需要网络）"
+        echo ""
+        echo -e "   ${DIM}修复后可以重新运行本脚本，或自行打开编辑器测试${NC}"
+    fi
+
+    # 清理测试文件
+    rm -f "$TEST_FILE"
+}
+
+# ////////////////////////////////////////////////////////////////////////////
 #  完成汇总
 # ////////////////////////////////////////////////////////////////////////////
 show_summary() {
@@ -424,6 +510,11 @@ main() {
 
     # ── 第四步 ──
     show_voice_guide
+
+    # ── 语音验证 ──
+    if confirm_yes "是否立即测试 Win + H 语音输入？"; then
+        test_voice
+    fi
 
     # ── 完成 ──
     show_summary
