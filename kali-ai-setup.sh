@@ -1,33 +1,17 @@
 #!/bin/bash
 # ============================================================================
-#
-#   ██╗  ██╗ █████╗ ██╗     ██╗    ██████╗ ██╗
-#   ██║ ██╔╝██╔══██╗██║     ██║    ██╔══██╗██║
-#   █████╔╝ ███████║██║     ██║    ██████╔╝██║
-#   ██╔═██╗ ██╔══██║██║     ██║    ██╔══██╗██║
-#   ██║  ██╗██║  ██║███████╗██║    ██║  ██║██║
-#   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝    ╚═╝  ╚═╝╚═╝
-#
-#   Kali AI 交互环境一键部署脚本 v1.0
+#   Kali AI 交互环境一键部署 v2.0
 #   Author : Mr.li8848
 #   Usage  : sudo bash kali-ai-setup.sh
 #
-#   ─────────────────────────────────────────────────────────────
-#   功能: Docker → Lobe Chat → 阿里云百炼 → 语音输入
-#   ─────────────────────────────────────────────────────────────
-#   第一步: 安装 Docker 环境
-#   第二步: 部署 Lobe Chat (Web UI)
-#   第三步: 配置阿里云百炼 API Key
-#   第四步: 语音输入配置说明 (Win + H)
-#   ─────────────────────────────────────────────────────────────
-#
+#   ① Docker Engine
+#   ② LobeChat (开机自启 + API 框架留空 + 模型可选)
+#   ③ Chrome 浏览器 (Web Speech API)
+#   ④ VMware 声卡检查 + LobeChat 网页端语音
 # ============================================================================
 
 set -e
 
-# ////////////////////////////////////////////////////////////////////////////
-#  配色 & 变量
-# ////////////////////////////////////////////////////////////////////////////
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -39,13 +23,9 @@ DIM='\033[2m'
 NC='\033[0m'
 
 LOG_FILE="/tmp/kali-ai-setup-$(date +%Y%m%d-%H%M%S).log"
-LOBE_PORT=3210                          # 默认访问端口
+LOBE_PORT=3210
 CONTAINER_NAME="lobe-chat"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# ////////////////////////////////////////////////////////////////////////////
-#  工具函数
-# ////////////////////////////////////////////////////////////////////////////
 log_msg()   { echo -e "$1" | tee -a "$LOG_FILE"; }
 step_ok()   { log_msg "   ${GREEN}✓${NC}  $1"; }
 step_warn() { log_msg "   ${YELLOW}⚠${NC}  $1"; }
@@ -68,471 +48,291 @@ section_title() {
 }
 
 confirm_yes() {
-    local prompt="$1"
     local answer
-    read -p "$(echo -e "   ${YELLOW}${prompt} [Y/n]: ${NC}")" answer
+    read -p "$(echo -e "   ${YELLOW}${1} [Y/n]: ${NC}")" answer
     [[ ! "$answer" =~ ^[Nn] ]]
 }
 
 check_root() {
     if [ "$(id -u)" -ne 0 ]; then
-        log_msg "${RED}⛔ 请使用 sudo 运行此脚本！${NC}"
-        log_msg "   sudo bash $0"
+        echo -e "${RED}⛔ 请使用 sudo 运行！${NC}"
+        echo "   sudo bash $0"
         exit 1
     fi
 }
 
-# ////////////////////////////////////////////////////////////////////////////
-#  第一步：安装 Docker
-# ////////////////////////////////////////////////////////////////////////////
+# ============================================================================
+#  ① Docker
+# ============================================================================
 install_docker() {
-    banner "第一步：安装 Docker 环境"
+    banner "① 安装 Docker Engine"
 
     if command -v docker &>/dev/null; then
-        echo -e "   $(docker --version)"
-        step_ok "Docker 已安装，跳过"
-    else
-        section_title "安装 Docker Engine"
-        step_info "正在导入 Docker GPG 密钥..."
-
-        # 移除旧版本
-        apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
-
-        # 安装依赖
-        apt update -y
-        apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
-
-        # 添加 Docker 官方 GPG 密钥
-        mkdir -p /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/debian/gpg | \
-            gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
-
-        # 添加 apt 源
-        echo \
-            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-            https://download.docker.com/linux/debian \
-            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-            tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-        apt update -y
-        apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-
-        # 启动 Docker
-        systemctl enable docker --now 2>/dev/null || true
-
-        step_ok "Docker 安装完成 — $(docker --version)"
-
-        # 把当前用户加入 docker 组（避免每次 sudo）
-        if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
-            usermod -aG docker "$SUDO_USER" 2>/dev/null || true
-            step_info "已将 $SUDO_USER 加入 docker 组（下次登录生效）"
-        fi
+        step_ok "$(docker --version) — 已安装"
+        return
     fi
 
-    # 验证
-    echo ""
-    step_info "验证 Docker 是否正常..."
-    if docker run --rm hello-world 2>/dev/null | grep -q "Hello from Docker"; then
-        step_ok "Docker 运行正常"
-    else
-        step_warn "Docker 测试失败，请检查"
-    fi
+    apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
+    apt update -y
+    apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+
+    apt update -y
+    apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    systemctl enable docker --now 2>/dev/null || true
+
+    [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ] && usermod -aG docker "$SUDO_USER" 2>/dev/null || true
+    step_ok "Docker 安装完成 — $(docker --version)"
 }
 
-# ////////////////////////////////////////////////////////////////////////////
-#  第二步：部署 Lobe Chat
-# ////////////////////////////////////////////////////////////////////////////
+# ============================================================================
+#  ② LobeChat — 开机自启 + API 留空 + 模型可选
+# ============================================================================
 deploy_lobe_chat() {
-    banner "第二步：部署 Lobe Chat 聊天界面"
+    banner "② 部署 LobeChat（开机自启 + API 框架）"
 
-    echo ""
-    echo -e "   ${BOLD}${WHITE}Lobe Chat${NC}"
-    echo -e "   ${DIM}开源、现代化、支持 30+ LLM 的聊天 UI${NC}"
-    echo -e "   ${DIM}官网: https://github.com/lobehub/lobe-chat${NC}"
+    echo -e "   ${DIM}开源聊天 UI | 支持 30+ LLM | 自带语音输入 (Web Speech API)${NC}"
+    echo -e "   ${DIM}https://github.com/lobehub/lobe-chat${NC}"
     echo ""
 
-    # 检查是否已有容器
-    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
-        step_info "检测到已有 Lobe Chat 容器，将先移除..."
-        docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
-    fi
+    # 干掉旧容器
+    docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
-    # 读取或设置访问密码
+    # 访问密码
     local ACCESS_PASSWORD=""
-    read -p "$(echo -e "   ${YELLOW}设置 Lobe Chat 访问密码（直接回车则无密码）: ${NC}")" ACCESS_PASSWORD
+    read -p "$(echo -e "   ${YELLOW}设置 LobeChat 访问密码（回车跳过）: ${NC}")" ACCESS_PASSWORD
 
-    # 读取端
-    read -p "$(echo -e "   ${YELLOW}设置 Web 访问端口 [默认: ${LOBE_PORT}]: ${NC}")" CUSTOM_PORT
+    # 端口
+    read -p "$(echo -e "   ${YELLOW}Web 端口 [默认 ${LOBE_PORT}]: ${NC}")" CUSTOM_PORT
     LOBE_PORT="${CUSTOM_PORT:-$LOBE_PORT}"
 
-    # 构建 docker run 命令
-    local DOCKER_ENVS=(
-        "-e OPENAI_API_KEY=sk-dummy-placeholder"
-        "-e OPENAI_PROXY_URL=https://dashscope.aliyuncs.com/compatible-mode/v1"
-        "-e ACCESS_CODE=${ACCESS_PASSWORD}"
+    # ── 模型选择 ──
+    echo ""
+    echo -e "   ${BOLD}${WHITE}选择默认模型:${NC}"
+    echo -e "   ${CYAN}1${NC}) qwen-turbo      — 最快最省"
+    echo -e "   ${CYAN}2${NC}) qwen-plus       — 均衡推荐 (默认)"
+    echo -e "   ${CYAN}3${NC}) qwen-max        — 最强推理"
+    echo -e "   ${CYAN}4${NC}) qwen-max-longcontext — 超长上下文"
+    echo -e "   ${CYAN}5${NC}) 不预设，我自己在 Web 界面里配"
+    echo ""
+
+    local MODEL_CHOICE
+    local DEFAULT_MODEL="qwen-plus"
+    read -p "$(echo -e "   ${YELLOW}选择 [1-5，默认 2]: ${NC}")" MODEL_CHOICE
+    case "${MODEL_CHOICE:-2}" in
+        1) DEFAULT_MODEL="qwen-turbo" ;;
+        2) DEFAULT_MODEL="qwen-plus" ;;
+        3) DEFAULT_MODEL="qwen-max" ;;
+        4) DEFAULT_MODEL="qwen-max-longcontext" ;;
+        5) DEFAULT_MODEL="" ;;
+    esac
+
+    # ── 启动容器 ──
+    # API Key 留空，用户自行在 Web 界面设置里填入
+    # OPENAI_PROXY_URL 预设为百炼兼容端点
+    step_info "拉取镜像（约 500MB）..."
+
+    local DOCKER_ARGS=(
+        -d
+        --name "$CONTAINER_NAME"
+        --restart unless-stopped
+        -p "${LOBE_PORT}:3210"
     )
 
-    echo ""
-    step_info "正在拉取 Lobe Chat 镜像（约 500MB，请耐心等待）..."
+    [ -n "$ACCESS_PASSWORD" ] && DOCKER_ARGS+=(-e "ACCESS_CODE=${ACCESS_PASSWORD}")
+    DOCKER_ARGS+=(-e "OPENAI_PROXY_URL=https://dashscope.aliyuncs.com/compatible-mode/v1")
+    [ -n "$DEFAULT_MODEL" ] && DOCKER_ARGS+=(-e "OPENAI_MODEL_LIST=-all,+${DEFAULT_MODEL}")
 
-    docker run -d \
-        --name "$CONTAINER_NAME" \
-        --restart unless-stopped \
-        -p "${LOBE_PORT}:3210" \
-        -e ACCESS_CODE="${ACCESS_PASSWORD}" \
-        lobehub/lobe-chat 2>/dev/null || {
-        step_err "镜像拉取或容器启动失败！请检查网络连接。"
+    docker run "${DOCKER_ARGS[@]}" lobehub/lobe-chat || {
+        step_err "容器启动失败！检查网络。"
         return 1
     }
 
-    # 等待服务启动
-    step_info "等待服务启动..."
     sleep 3
-
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
-        step_ok "Lobe Chat 容器运行中"
-    else
-        step_err "容器未正常运行，请查看日志:"
+    docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$" && step_ok "LobeChat 运行中 — 已设置开机自启" || {
+        step_err "容器异常"
         docker logs "$CONTAINER_NAME" 2>/dev/null | tail -20
         return 1
-    fi
+    }
 }
 
-# ////////////////////////////////////////////////////////////////////////////
-#  第三步：配置 API Key
-# ////////////////////////////////////////////////////////////////////////////
-configure_api() {
-    banner "第三步：配置阿里云百炼 API 密钥"
+# ============================================================================
+#  ③ 浏览器安装
+# ============================================================================
+install_browser() {
+    banner "③ 安装 Chrome 浏览器"
 
-    echo ""
-    echo -e "   ${BOLD}${WHITE}📝 获取 API Key 的步骤（在 Windows 浏览器操作）:${NC}"
-    echo ""
-    echo -e "   ${CYAN}1.${NC} 打开浏览器访问: ${WHITE}https://bailian.console.aliyun.com/${NC}"
-    echo -e "   ${CYAN}2.${NC} 注册/登录阿里云账号"
-    echo -e "   ${CYAN}3.${NC} 左侧菜单 → ${BOLD}模型广场${NC} → 选择 ${BOLD}通义千问${NC}"
-    echo -e "   ${CYAN}4.${NC} 左侧菜单 → ${BOLD}API-KEY 管理${NC} → 创建新的 API Key"
-    echo -e "   ${CYAN}5.${NC} 复制生成的 API Key（格式: sk-xxxxxxxxxxxxxxxx）"
-    echo ""
-
-    # 读取用户输入的 API Key
-    local API_KEY=""
-    while [ -z "$API_KEY" ]; do
-        read -p "$(echo -e "   ${YELLOW}请粘贴你的阿里云百炼 API Key: ${NC}")" API_KEY
-
-        if [ -z "$API_KEY" ]; then
-            echo -e "   ${RED}API Key 不能为空！${NC}"
-            echo ""
-        fi
-    done
-
-    # 验证 API Key 格式
-    if [[ "$API_KEY" =~ ^sk-[a-zA-Z0-9]+$ ]]; then
-        step_ok "API Key 格式检查通过"
-    else
-        step_warn "API Key 格式异常（标准格式为 sk- 开头），但继续尝试配置..."
+    if command -v google-chrome-stable &>/dev/null; then
+        step_ok "Google Chrome 已安装"
+        return
     fi
 
-    # 更新 Lobe Chat 容器的环境变量
-    step_info "正在注入 API Key 到 Lobe Chat 容器..."
+    [ -f /usr/bin/chromium ] && step_ok "Chromium 已安装" && return
 
-    docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+    step_info "安装 Google Chrome (最佳 Web Speech API 支持)..."
 
-    docker run -d \
-        --name "$CONTAINER_NAME" \
-        --restart unless-stopped \
-        -p "${LOBE_PORT}:3210" \
-        -e OPENAI_API_KEY="${API_KEY}" \
-        -e OPENAI_PROXY_URL="https://dashscope.aliyuncs.com/compatible-mode/v1" \
-        -e ACCESS_CODE="${ACCESS_PASSWORD}" \
-        lobehub/lobe-chat 2>/dev/null
+    curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -o /tmp/chrome.deb
+    apt install -y /tmp/chrome.deb 2>/dev/null || apt install -f -y 2>/dev/null || true
+    rm -f /tmp/chrome.deb
 
-    sleep 2
-
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
-        step_ok "API Key 已配置，容器重启完成"
-    else
-        step_err "容器重启失败！"
-        step_info "手动检查: docker logs $CONTAINER_NAME"
-        return 1
-    fi
+    command -v google-chrome-stable &>/dev/null && step_ok "Chrome 安装完成" || {
+        step_warn "Chrome 安装失败，改用 Chromium"
+        apt install -y chromium 2>/dev/null || true
+    }
 }
 
-# ////////////////////////////////////////////////////////////////////////////
-#  第四步：语音输入指南
-# ////////////////////////////////////////////////////////////////////////////
-show_voice_guide() {
-    banner "第四步：配置语音下命令（Win + H）"
+# ============================================================================
+#  ④ 声卡 + 语音
+# ============================================================================
+setup_voice() {
+    banner "④ VMware 声卡检查 + LobeChat 网页语音"
 
+    # ── 声卡检测 ──
     echo ""
-    echo -e "   ${BOLD}${WHITE}🎤 核心原理（一句话讲清楚）:${NC}"
-    echo ""
-    echo -e "   ${GREEN}Win + H${NC} 是 ${BOLD}Windows 自带${NC}的语音听写功能，不需要在 Kali 里装任何东西。"
-    echo -e "   你在 Kali 里点一下输入框 → 按 ${BOLD}Win + H${NC} → 说话 → 文字自动打进去。"
+    echo -e "   ${BOLD}${WHITE}检测音频设备:${NC}"
     echo ""
 
-    echo -e "   ${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "   ${BOLD}${WHITE}  📋 操作步骤${NC}"
-    echo -e "   ${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo -e "   ${CYAN}①${NC}  ${BOLD}在 Windows 上开启在线语音识别:${NC}"
-    echo -e "      Windows 设置 → 隐私和安全性 → 语音"
-    echo -e "      → 打开 ${GREEN}"在线语音识别"${NC}"
-    echo ""
-    echo -e "   ${CYAN}②${NC}  ${BOLD}选择输入法:${NC}"
-    echo -e "      按 ${BOLD}Win + 空格${NC} 切换到 ${YELLOW}微软拼音${NC}"
-    echo -e "      ${DIM}(Win + H 依赖微软拼音才能正常工作)${NC}"
-    echo ""
-    echo -e "   ${CYAN}③${NC}  ${BOLD}在 Kali 里点击输入框:${NC}"
-    echo -e "      点击终端 / 浏览器地址栏 / Lobe Chat 对话框"
-    echo -e "      ${DIM}(关键是让光标在文本输入框里闪烁)${NC}"
-    echo ""
-    echo -e "   ${CYAN}④${NC}  ${BOLD}按下 Win + H:${NC}"
-    echo -e "      屏幕顶部出现语音悬浮窗"
-    echo -e "      ${DIM}如果出现的是麦克风图标 → 点一下开始听写${NC}"
-    echo ""
-    echo -e "   ${CYAN}⑤${NC}  ${BOLD}对着麦克风说话:${NC}"
-    echo -e "      说的话会实时转成文字打到 Kali 输入框里"
-    echo -e "      说完按 ${BOLD}Enter${NC} 发送"
-    echo ""
+    local SOUND_OK=1
 
-    echo -e "   ${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "   ${BOLD}${WHITE}  🔧 常见问题${NC}"
-    echo -e "   ${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo -e "   ${YELLOW}Q: Win + H 没反应？${NC}"
-    echo -e "   ${CYAN}A:${NC} 1) 确认输入法是微软拼音"
-    echo -e "         2) 确认联网（语音识别需要网络）"
-    echo -e "         3) Windows 设置 → 蓝牙和设备 → 麦克风 → 确保已连接"
-    echo ""
-    echo -e "   ${YELLOW}Q: 识别的是英文不是中文？${NC}"
-    echo -e "   ${CYAN}A:${NC} 在语音悬浮窗上点齿轮 ⚙ → 选择 ${BOLD}中文(简体)${NC}"
-    echo ""
-    echo -e "   ${YELLOW}Q: 识别不准？${NC}"
-    echo -e "   ${CYAN}A:${NC} 说话慢一点、清晰一点；靠近麦克风；降低环境噪音"
-    echo ""
-
-    echo -e "   ${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "   ${BOLD}${WHITE}  🎯 典型场景演示${NC}"
-    echo -e "   ${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo -e "   ${BOLD}场景一: 在 Lobe Chat 里用语音提问${NC}"
-    echo -e "   ${CYAN}1.${NC} 浏览器打开 http://localhost:${LOBE_PORT}"
-    echo -e "   ${CYAN}2.${NC} 点击底部的输入框"
-    echo -e "   ${CYAN}3.${NC} 按 Win + H → 说 ${YELLOW}"请帮我写一个 Nmap 扫描脚本"${NC}"
-    echo -e "   ${CYAN}4.${NC} 文字出现在输入框 → 按 Enter → AI 回复"
-    echo ""
-    echo -e "   ${BOLD}场景二: 在终端里用语音输入命令${NC}"
-    echo -e "   ${CYAN}1.${NC} 打开 Kali 终端"
-    echo -e "   ${CYAN}2.${NC} 点击命令行输入区"
-    echo -e "   ${CYAN}3.${NC} 按 Win + H → 说 ${YELLOW}"nmap -sV 192.168.1.1"${NC}"
-    echo -e "   ${CYAN}4.${NC} 文字出现在终端 → 按 Enter 执行"
-}
-
-# ////////////////////////////////////////////////////////////////////////////
-#  第四步追加：语音验证
-# ////////////////////////////////////////////////////////////////////////////
-test_voice() {
-    banner "🎤 语音输入验证测试"
-
-    echo ""
-    echo -e "   ${BOLD}${WHITE}接下来做一次真实测试，确认 Win + H 能打字到 Kali:${NC}"
-    echo ""
-
-    echo -e "   ${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "   ${BOLD}${WHITE}  ⚠ 现在系统将打开一个文本编辑器${NC}"
-    echo -e "   ${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo -e "   ${CYAN}操作步骤:${NC}"
-    echo -e "   ${CYAN}1.${NC} 编辑器打开后 → ${BOLD}点击编辑区域${NC}"
-    echo -e "   ${CYAN}2.${NC} 左手按下 ${BOLD}Win + H${NC}（Windows 键和 H 键同时按）"
-    echo -e "   ${CYAN}3.${NC} 看到屏幕顶部出现 ${GREEN}"正在聆听..."${NC} 悬浮窗"
-    echo -e "   ${CYAN}4.${NC} 对着麦克风说话：${YELLOW}"你好 Kali 语音测试成功"${NC}"
-    echo -e "   ${CYAN}5.${NC} 确认文字出现在编辑器里"
-    echo -e "   ${CYAN}6.${NC} 关掉编辑器，回到这里回答验证结果"
-    echo ""
-    echo -e "   ${DIM}如果 Win + H 没反应，请切到微软拼音输入法再试${NC}"
-    echo ""
-
-    read -p "$(echo -e "   ${YELLOW}准备好了吗？按 Enter 打开编辑器测试...${NC}")" _
-
-    # 创建一个临时测试文件并打开
-    local TEST_FILE="/tmp/voice-test-$(date +%H%M%S).txt"
-    cat > "$TEST_FILE" << TESTEOF
-╔══════════════════════════════════════════════════════╗
-║  语音输入验证测试                                    ║
-║                                                      ║
-║  请在下方空白处点击鼠标，然后按 Win + H 说话:        ║
-║                                                      ║
-║  ${BOLD}Win + H${NC} = Windows 语音听写快捷键                      ║
-║                                                      ║
-╚══════════════════════════════════════════════════════╝
-
-↓ 说话的内容会出现在这里 ↓
-
-TESTEOF
-
-    # 打开编辑器（优先用 GUI 编辑器，没有就用 nano）
-    if command -v mousepad &>/dev/null; then
-        mousepad "$TEST_FILE" 2>/dev/null &
-    elif command -v gedit &>/dev/null; then
-        gedit "$TEST_FILE" 2>/dev/null &
-    elif command -v kwrite &>/dev/null; then
-        kwrite "$TEST_FILE" 2>/dev/null &
-    elif command -v leafpad &>/dev/null; then
-        leafpad "$TEST_FILE" 2>/dev/null &
+    # 检查声卡
+    if cat /proc/asound/cards 2>/dev/null | grep -q '\[.*\]'; then
+        echo -e "   ${GREEN}声卡已识别:${NC}"
+        cat /proc/asound/cards | grep '\[' | while read line; do
+            echo -e "     ${CYAN}${line}${NC}"
+        done
     else
-        echo -e "   ${YELLOW}未找到 GUI 编辑器，用 nano 代替${NC}"
-        echo -e "   ${CYAN}在 nano 里点一下 → 按 Win + H → 说话${NC}"
-        sleep 2
-        nano "$TEST_FILE"
+        echo -e "   ${RED}未检测到声卡！${NC}"
+        SOUND_OK=0
     fi
 
+    # 检查麦克风
     echo ""
-
-    # 询问测试结果
-    local TEST_OK
-    read -p "$(echo -e "   ${YELLOW}Win + H 语音输入测试结果 — 文字打上去了吗？ [Y/n]: ${NC}")" TEST_OK
-    TEST_OK=${TEST_OK:-Y}
-
-    if [[ "$TEST_OK" =~ ^[Yy] ]]; then
-        echo ""
-        echo -e "   ${GREEN}${BOLD}🎉 语音输入验证通过！${NC}"
-        echo -e "   ${DIM}以后在 Kali 的任何输入框里，Win + H → 说话 → 打字，全程有效${NC}"
+    if amixer sget Capture 2>/dev/null | grep -q 'Capture'; then
+        echo -e "   ${GREEN}麦克风控件已识别${NC}"
+    elif arecord -l 2>/dev/null | grep -q 'card'; then
+        echo -e "   ${GREEN}录音设备已识别:${NC}"
+        arecord -l | grep 'card'
     else
-        echo ""
-        echo -e "   ${YELLOW}${BOLD}⚠ 语音输入未通过，请检查:${NC}"
-        echo ""
-        echo -e "   ${CYAN}1.${NC} 输入法是否切到 ${BOLD}微软拼音${NC}？（Win + 空格切换）"
-        echo -e "   ${CYAN}2.${NC} Windows 设置 → 隐私 → 语音 → ${BOLD}在线语音识别${NC} 是否打开？"
-        echo -e "   ${CYAN}3.${NC} 麦克风是否正常工作？（Windows 设置 → 声音 → 测试麦克风）"
-        echo -e "   ${CYAN}4.${NC} 电脑是否联网？（语音识别需要网络）"
-        echo ""
-        echo -e "   ${DIM}修复后可以重新运行本脚本，或自行打开编辑器测试${NC}"
+        echo -e "   ${YELLOW}未检测到麦克风设备${NC}"
+        SOUND_OK=0
     fi
 
-    # 清理测试文件
-    rm -f "$TEST_FILE"
+    # PulseAudio 状态
+    echo ""
+    if command -v pactl &>/dev/null; then
+        pactl info 2>/dev/null | grep "Server Name" && echo -e "   ${GREEN}PulseAudio 运行中${NC}" || echo -e "   ${YELLOW}PulseAudio 未运行${NC}"
+    fi
+
+    # ── VMware 声卡配置提示 ──
+    echo ""
+    if [ $SOUND_OK -eq 0 ]; then
+        echo -e "   ${YELLOW}${BOLD}⚠ VMware 声卡映射检查:${NC}"
+        echo ""
+        echo -e "   ${CYAN}1.${NC} 关闭 Kali 虚拟机"
+        echo -e "   ${CYAN}2.${NC} VMware → 虚拟机设置 → 硬件 → 声卡"
+        echo -e "   ${CYAN}3.${NC} 确保: ${BOLD}已连接${NC} + ${BOLD}启动时连接${NC} 都已勾选"
+        echo -e "   ${CYAN}4.${NC} 声卡类型选 ${BOLD}Intel HD Audio${NC}"
+        echo -e "   ${CYAN}5.${NC} 重启 Kali"
+        echo ""
+    fi
+
+    # 安装 PulseAudio 音量控制
+    apt install -y pulseaudio pavucontrol alsa-utils 2>/dev/null || true
+
+    # ── LobeChat 网页端语音说明 ──
+    echo ""
+    echo -e "   ${BOLD}${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "   ${BOLD}${WHITE}  🎤 LobeChat 网页端语音输入${NC}"
+    echo -e "   ${BOLD}${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "   ${GREEN}不需要任何额外配置。${NC}"
+    echo ""
+    echo -e "   ${CYAN}1.${NC} Chrome 打开 ${GREEN}http://localhost:${LOBE_PORT}${NC}"
+    echo -e "   ${CYAN}2.${NC} 点击输入框 ${BOLD}右侧的麦克风图标 🎤${NC}"
+    echo -e "   ${CYAN}3.${NC} 浏览器弹出麦克风权限请求 → ${BOLD}允许${NC}"
+    echo -e "   ${CYAN}4.${NC} 对着麦克风说话 → 实时转文字 → Enter 发送"
+    echo ""
+    echo -e "   ${YELLOW}首次使用自动下载语音模型（约 50MB），需联网。${NC}"
+    echo ""
+
+    step_ok "声卡检查完毕"
 }
 
-# ////////////////////////////////////////////////////////////////////////////
-#  完成汇总
-# ////////////////////////////////////////////////////////////////////////////
+# ============================================================================
+#  完成
+# ============================================================================
 show_summary() {
-    # 获取虚拟机 IP
-    local KALI_IP=""
+    local KALI_IP
     KALI_IP=$(ip addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v '127.0.0.1' | head -1)
     [ -z "$KALI_IP" ] && KALI_IP="localhost"
 
     echo ""
     echo -e "  ${BOLD}${GREEN}"
     echo "  ╔══════════════════════════════════════════════════════════╗"
-    echo "  ║                                                          ║"
-    echo "  ║         🎉  AI 交互环境部署完成！                       ║"
-    echo "  ║                                                          ║"
+    echo "  ║         ✓  AI 交互环境部署完成                         ║"
     echo "  ╚══════════════════════════════════════════════════════════╝"
     echo -e "  ${NC}"
     echo ""
 
-    echo -e "  ${BOLD}${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${BOLD}${WHITE}  📋 部署信息汇总${NC}"
-    echo -e "  ${BOLD}${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  ${BOLD}访问地址:${NC}"
+    echo -e "    本机:  ${CYAN}http://localhost:${LOBE_PORT}${NC}"
+    [ "$KALI_IP" != "localhost" ] && echo -e "    外网:  ${CYAN}http://${KALI_IP}:${LOBE_PORT}${NC}"
     echo ""
-    echo -e "  🌐 ${BOLD}Lobe Chat 地址:${NC}"
-    echo -e "     Kali 本机:  ${CYAN}http://localhost:${LOBE_PORT}${NC}"
-    [ "$KALI_IP" != "localhost" ] && \
-        echo -e "     Windows 访问: ${CYAN}http://${KALI_IP}:${LOBE_PORT}${NC}"
-    echo ""
-    echo -e "  🔑 ${BOLD}访问密码:${NC} ${GREEN}${ACCESS_PASSWORD:-无密码}${NC}"
-    echo -e "  🤖 ${BOLD}对接模型:${NC} 阿里云百炼 — 通义千问"
-    echo -e "  🎤 ${BOLD}语音输入:${NC} Windows 系统级 Win + H"
-    echo ""
-    echo -e "  ${BOLD}${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${BOLD}${WHITE}  🔧 常用管理命令${NC}"
-    echo -e "  ${BOLD}${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo -e "  ${DIM}# 查看容器状态${NC}"
-    echo -e "  ${CYAN}docker ps | grep lobe${NC}"
-    echo ""
-    echo -e "  ${DIM}# 查看日志${NC}"
-    echo -e "  ${CYAN}docker logs lobe-chat${NC}"
-    echo ""
-    echo -e "  ${DIM}# 重启容器${NC}"
-    echo -e "  ${CYAN}docker restart lobe-chat${NC}"
-    echo ""
-    echo -e "  ${DIM}# 停止容器${NC}"
-    echo -e "  ${CYAN}docker stop lobe-chat${NC}"
+    echo -e "  ${BOLD}API Key 配置:${NC}"
+    echo -e "    LobeChat → 右上角 ⚙ → 语言模型 → OpenAI"
+    echo -e "    API 代理: ${CYAN}https://dashscope.aliyuncs.com/compatible-mode/v1${NC}"
+    echo -e "    API Key:  ${YELLOW}← 在此填入你的百炼 Key${NC}"
+    echo -e "    模型:     ${CYAN}qwen-plus${NC} (或 qwen-turbo / qwen-max)"
     echo ""
 
-    echo -e "  ${BOLD}${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${BOLD}${WHITE}  🚀 开始使用${NC}"
-    echo -e "  ${BOLD}${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo -e "  ${CYAN}1.${NC} 浏览器打开 ${GREEN}http://localhost:${LOBE_PORT}${NC}"
-    echo -e "  ${CYAN}2.${NC} 左侧选择模型 → ${BOLD}通义千问${NC}"
-    echo -e "  ${CYAN}3.${NC} 点击输入框 → ${BOLD}Win + H${NC} → 说话 → Enter"
+    echo -e "  ${BOLD}常用管理:${NC}"
+    echo -e "    ${DIM}docker restart lobe-chat${NC}  重启"
+    echo -e "    ${DIM}docker logs lobe-chat${NC}     查看日志"
+    echo -e "    ${DIM}docker stop lobe-chat${NC}     停止"
     echo ""
 
-    echo -e "  ${DIM}日志文件: ${LOG_FILE}${NC}"
+    echo -e "  ${BOLD}语音输入:${NC}"
+    echo -e "    Chrome 打开页面 → 输入框旁 🎤 → 允许麦克风 → 说话"
+    echo ""
+
+    echo -e "  ${DIM}日志: ${LOG_FILE}${NC}"
     echo ""
 }
 
-# ////////////////////////////////////////////////////////////////////////////
+# ============================================================================
 #  主流程
-# ////////////////////////////////////////////////////////////////////////////
+# ============================================================================
 main() {
     clear
-    banner "Kali AI 交互环境一键部署 v1.0"
+    banner "Kali AI 交互环境一键部署 v2.0"
 
+    echo -e "  ${GREEN}❶${NC}  Docker Engine"
+    echo -e "  ${CYAN}❷${NC}  LobeChat (开机自启 + API 留空 + 模型可选)"
+    echo -e "  ${MAGENTA}❸${NC}  Chrome 浏览器"
+    echo -e "  ${YELLOW}❹${NC}  声卡检查 + 网页语音"
     echo ""
-    echo -e "  ${BOLD}${WHITE}本脚本将完成以下操作:${NC}"
-    echo ""
-    echo -e "  ${GREEN}❶${NC}  安装 Docker 容器引擎"
-    echo -e "  ${CYAN}❷${NC}  部署 Lobe Chat 聊天界面 (Web UI)"
-    echo -e "  ${MAGENTA}❸${NC}  配置阿里云百炼 API Key (通义千问)"
-    echo -e "  ${YELLOW}❹${NC}  语音输入操作指南 (Win + H)"
-    echo ""
-    echo -e "  ${DIM}预估时间: 5-10 分钟（主要看网络速度）${NC}"
+    echo -e "  ${RED}⚠ API Key 由你自行在 LobeChat Web 界面填入，脚本不触碰${NC}"
     echo ""
 
-    if ! confirm_yes "现在开始部署？"; then
-        log_msg "已取消"
-        exit 0
-    fi
+    confirm_yes "开始部署？" || { log_msg "已取消"; exit 0; }
 
-    # ── 第一步 ──
     install_docker
-
-    # ── 第二步 ──
     deploy_lobe_chat
-
-    # ── 第三步 ──
-    configure_api
-
-    # ── 第四步 ──
-    show_voice_guide
-
-    # ── 语音验证 ──
-    if confirm_yes "是否立即测试 Win + H 语音输入？"; then
-        test_voice
-    fi
-
-    # ── 完成 ──
+    install_browser
+    setup_voice
     show_summary
 }
 
-# ////////////////////////////////////////////////////////////////////////////
-#  入口
-# ////////////////////////////////////////////////////////////////////////////
 check_root
-
-# 初始化日志
 cat > "$LOG_FILE" << SETUPLOG
 ═══════════════════════════════════════════
-  Kali AI 交互环境部署日志
+  Kali AI 环境部署日志
   时间: $(date '+%Y-%m-%d %H:%M:%S')
-  脚本: v1.0 — Mr.li8848
+  v2.0 — Mr.li8848
 ═══════════════════════════════════════════
 
 SETUPLOG
-
 main
