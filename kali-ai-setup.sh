@@ -74,11 +74,29 @@ install_docker() {
 
     apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
     apt update -y
-    apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
+    apt install -y ca-certificates curl
+
+    # Kali 的 VERSION_CODENAME 是 "kali-rolling"，Docker 官方源没有这个
+    # 取 Kali 底层 Debian 版本: 从 /etc/debian_version 读取
+    local DEBIAN_CODENAME=""
+    if [ -f /etc/debian_version ]; then
+        local DEBIAN_VER
+        DEBIAN_VER=$(cat /etc/debian_version | cut -d. -f1)
+        case "$DEBIAN_VER" in
+            13) DEBIAN_CODENAME="trixie" ;;
+            12) DEBIAN_CODENAME="bookworm" ;;
+            11) DEBIAN_CODENAME="bullseye" ;;
+            *)  DEBIAN_CODENAME="bookworm" ;;  # fallback
+        esac
+    else
+        DEBIAN_CODENAME="bookworm"
+    fi
+    step_info "Debian 基版: ${DEBIAN_CODENAME}"
+
     mkdir -p /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
 
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${DEBIAN_CODENAME} stable" > /etc/apt/sources.list.d/docker.list
 
     apt update -y
     apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
