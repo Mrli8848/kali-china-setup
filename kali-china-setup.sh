@@ -658,11 +658,20 @@ FCITXEOF
         if command -v xfconf-query &>/dev/null; then
             # 需要以实际用户身份运行，切换回 $SUDO_USER
             if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
-                su "$SUDO_USER" -c "xfconf-query -c xfwm4 -p /general/theme -s Greybird" 2>/dev/null || true
-                su "$SUDO_USER" -c "xfconf-query -c xsettings -p /Net/ThemeName -s Greybird" 2>/dev/null || true
-                su "$SUDO_USER" -c "xfconf-query -c xsettings -p /Net/IconThemeName -s Papirus" 2>/dev/null || true
-                su "$SUDO_USER" -c "xfconf-query -c xfwm4 -p /general/title_font -s 'Noto Sans CJK SC 10'" 2>/dev/null || true
-                su "$SUDO_USER" -c "xfconf-query -c xsettings -p /Gtk/CursorThemeName -s Breeze" 2>/dev/null || true
+                local UID
+                UID=$(id -u "$SUDO_USER" 2>/dev/null)
+                local DBUS="unix:path=/run/user/${UID}/bus"
+
+                sudo -u "$SUDO_USER" env DBUS_SESSION_BUS_ADDRESS="$DBUS" DISPLAY=:0 \
+                    xfconf-query -c xfwm4 -p /general/theme -s Greybird 2>/dev/null || true
+                sudo -u "$SUDO_USER" env DBUS_SESSION_BUS_ADDRESS="$DBUS" DISPLAY=:0 \
+                    xfconf-query -c xsettings -p /Net/ThemeName -s Greybird 2>/dev/null || true
+                sudo -u "$SUDO_USER" env DBUS_SESSION_BUS_ADDRESS="$DBUS" DISPLAY=:0 \
+                    xfconf-query -c xsettings -p /Net/IconThemeName -s Papirus 2>/dev/null || true
+                sudo -u "$SUDO_USER" env DBUS_SESSION_BUS_ADDRESS="$DBUS" DISPLAY=:0 \
+                    xfconf-query -c xfwm4 -p /general/title_font -s "Noto Sans CJK SC 10" 2>/dev/null || true
+                sudo -u "$SUDO_USER" env DBUS_SESSION_BUS_ADDRESS="$DBUS" DISPLAY=:0 \
+                    xfconf-query -c xsettings -p /Gtk/CursorThemeName -s Breeze 2>/dev/null || true
                 step_ok "Xfce 主题已自动应用: Greybird + Papirus + Breeze"
             else
                 step_ok "主题已安装，请手动在 设置→外观 中选择"
