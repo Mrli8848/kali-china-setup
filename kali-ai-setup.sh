@@ -71,17 +71,30 @@ step_docker() {
     apt update -y
     apt install -y ca-certificates curl
 
-    local DEBIAN_CODENAME
-    if [ -f /etc/debian_version ]; then
-        case "$(cat /etc/debian_version | cut -d. -f1)" in
-            13) DEBIAN_CODENAME="trixie" ;;
-            12) DEBIAN_CODENAME="bookworm" ;;
-            11) DEBIAN_CODENAME="bullseye" ;;
-            *)  DEBIAN_CODENAME="bookworm" ;;
+    local DEBIAN_CODENAME=""
+    local DEBIAN_VER
+    DEBIAN_VER=$(cat /etc/debian_version 2>/dev/null | cut -d. -f1)
+
+    # /etc/debian_version 可能是数字(如 13.0)也可能是 "kali-rolling"
+    case "$DEBIAN_VER" in
+        13)            DEBIAN_CODENAME="trixie" ;;
+        12)            DEBIAN_CODENAME="bookworm" ;;
+        11)            DEBIAN_CODENAME="bullseye" ;;
+        kali-rolling)  ;; # 走 Kali 年份检测
+        *)             ;; # 走 fallback
+    esac
+
+    # 如果 debian_version 不是数字，从 Kali 版本年份反推 Debian 基版
+    if [ -z "$DEBIAN_CODENAME" ]; then
+        local KALI_YEAR
+        KALI_YEAR=$(grep -oP 'VERSION_ID="\K\d{4}' /etc/os-release 2>/dev/null || echo "0")
+        case "$KALI_YEAR" in
+            2026|2025) DEBIAN_CODENAME="trixie" ;;
+            2024|2023) DEBIAN_CODENAME="bookworm" ;;
+            *)         DEBIAN_CODENAME="bookworm" ;;
         esac
-    else
-        DEBIAN_CODENAME="bookworm"
     fi
+
     step_info "Debian 基版: ${DEBIAN_CODENAME}"
 
     mkdir -p /etc/apt/keyrings
