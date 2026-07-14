@@ -320,16 +320,16 @@ FCITXEOF
     echo -e "   ${BOLD}5.4${NC} Xfce 桌面主题美化"
     echo ""
     if confirm_yes "安装并应用美观的 Xfce 主题？"; then
-        apt install -y gtk2-engines-murrine gtk2-engines-pixbuf 2>/dev/null || true
+        apt install -y gtk2-engines-pixbuf 2>/dev/null || true
         apt install -y papirus-icon-theme greybird-gtk-theme arc-theme 2>/dev/null || \
         apt install -y papirus-icon-theme greybird-gtk-theme 2>/dev/null || true
         apt install -y breeze-cursor-theme fonts-firacode 2>/dev/null || true
 
         # 自动应用主题 — 需要 D-Bus 会话总线才能操作 xfconf
         if command -v xfconf-query &>/dev/null && [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
-            local UID
-            UID=$(id -u "$SUDO_USER" 2>/dev/null)
-            local DBUS="unix:path=/run/user/${UID}/bus"
+            local USER_ID
+            USER_ID=$(id -u "$SUDO_USER" 2>/dev/null)
+            local DBUS="unix:path=/run/user/${USER_ID}/bus"
 
             sudo -u "$SUDO_USER" env DBUS_SESSION_BUS_ADDRESS="$DBUS" DISPLAY=:0 \
                 xfconf-query -c xfwm4 -p /general/theme -s Greybird 2>/dev/null || true

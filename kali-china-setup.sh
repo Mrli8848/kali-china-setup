@@ -639,7 +639,7 @@ FCITXEOF
     # ── Xfce 桌面主题 + 图标包 ──
     if confirm_default_yes "安装 Xfce 美化主题和图标包？"; then
         # 主题引擎
-        apt install -y gtk2-engines-murrine gtk2-engines-pixbuf 2>/dev/null || true
+        apt install -y gtk2-engines-pixbuf 2>/dev/null || true
 
         # 图标主题: Papirus（现代扁平风）
         apt install -y papirus-icon-theme 2>/dev/null || true
@@ -658,9 +658,9 @@ FCITXEOF
         if command -v xfconf-query &>/dev/null; then
             # 需要以实际用户身份运行，切换回 $SUDO_USER
             if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
-                local UID
-                UID=$(id -u "$SUDO_USER" 2>/dev/null)
-                local DBUS="unix:path=/run/user/${UID}/bus"
+                local USER_ID
+                USER_ID=$(id -u "$SUDO_USER" 2>/dev/null)
+                local DBUS="unix:path=/run/user/${USER_ID}/bus"
 
                 sudo -u "$SUDO_USER" env DBUS_SESSION_BUS_ADDRESS="$DBUS" DISPLAY=:0 \
                     xfconf-query -c xfwm4 -p /general/theme -s Greybird 2>/dev/null || true
