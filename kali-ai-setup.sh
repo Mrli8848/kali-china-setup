@@ -113,19 +113,35 @@ step_docker() {
 #  ② LobeChat
 # ============================================================================
 step_lobechat() {
-    banner "② 部署 LobeChat（开机自启 + API 留空 + 模型可选）"
+    banner "② 部署 LobeChat（开机自启 + 自动配置 API）"
 
     echo -e "   ${DIM}开源聊天 UI | 支持 30+ LLM | 自带 Web Speech 语音输入${NC}"
     echo -e "   ${DIM}https://github.com/lobehub/lobe-chat${NC}"
     echo ""
 
-    # 检查 Docker
     if ! command -v docker &>/dev/null; then
         step_err "Docker 未安装，请先执行步骤 ①"
         return 1
     fi
 
     docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+
+    # API Key — 可在部署时填入，也可跳过后续在 Web 界面配
+    local API_KEY=""
+    echo -e "   ${BOLD}${WHITE}API Key 配置:${NC}"
+    echo -e "   ${DIM}粘贴后脚本自动注入容器，回车跳过则在 Web 界面手动配${NC}"
+    echo ""
+    read -p "$(echo -e "   ${YELLOW}阿里云百炼 API Key [sk-xxx，回车跳过]: ${NC}")" API_KEY
+
+    if [ -n "$API_KEY" ]; then
+        if [[ "$API_KEY" =~ ^sk-[a-zA-Z0-9]+$ ]]; then
+            step_ok "API Key 格式检查通过"
+        else
+            step_warn "API Key 格式异常，但仍会注入（稍后可在 Web 界面修正）"
+        fi
+    else
+        step_info "未提供 API Key — 部署后需在 LobeChat Web 界面手动填入"
+    fi
 
     # 访问密码
     local ACCESS_PASSWORD
@@ -135,33 +151,22 @@ step_lobechat() {
     read -p "$(echo -e "   ${YELLOW}Web 端口 [默认 ${LOBE_PORT}]: ${NC}")" CUSTOM_PORT
     LOBE_PORT="${CUSTOM_PORT:-$LOBE_PORT}"
 
-    # 模型选择
-    echo ""
-    echo -e "   ${BOLD}${WHITE}选择默认模型:${NC}"
-    echo -e "   ${CYAN}1${NC}) qwen-turbo            最快最省"
-    echo -e "   ${CYAN}2${NC}) qwen-plus             均衡推荐（默认）"
-    echo -e "   ${CYAN}3${NC}) qwen-max              最强推理"
-    echo -e "   ${CYAN}4${NC}) qwen-max-longcontext   超长上下文"
-    echo -e "   ${CYAN}5${NC}) 不预设，Web 界面里自己配"
-    echo ""
-
-    local DEFAULT_MODEL="qwen-plus"
-    read -p "$(echo -e "   ${YELLOW}选择 [1-5，默认 2]: ${NC}")" MODEL_CHOICE
-    case "${MODEL_CHOICE:-2}" in
-        1) DEFAULT_MODEL="qwen-turbo" ;;
-        2) DEFAULT_MODEL="qwen-plus" ;;
-        3) DEFAULT_MODEL="qwen-max" ;;
-        4) DEFAULT_MODEL="qwen-max-longcontext" ;;
-        5) DEFAULT_MODEL="" ;;
-    esac
-
     step_info "拉取镜像（约 500MB）..."
 
     local DOCKER_ARGS=(-d --name "$CONTAINER_NAME" --restart unless-stopped -p "${LOBE_PORT}:3210")
 
     [ -n "$ACCESS_PASSWORD" ] && DOCKER_ARGS+=(-e "ACCESS_CODE=${ACCESS_PASSWORD}")
+
+    # 百炼兼容端点
     DOCKER_ARGS+=(-e "OPENAI_PROXY_URL=https://dashscope.aliyuncs.com/compatible-mode/v1")
-    [ -n "$DEFAULT_MODEL" ] && DOCKER_ARGS+=(-e "OPENAI_MODEL_LIST=-all,+${DEFAULT_MODEL}")
+
+    # 如果用户填了 API Key，直接注入
+    if [ -n "$API_KEY" ]; then
+        DOCKER_ARGS+=(-e "OPENAI_API_KEY=${API_KEY}")
+    fi
+
+    # 预设可用模型列表（百炼兼容端点不支持 Get Model List，需要手动指定）
+    DOCKER_ARGS+=(-e "OPENAI_MODEL_LIST=-all,qwen-turbo,qwen-plus,qwen-max,qwen-max-longcontext")
 
     docker run "${DOCKER_ARGS[@]}" lobehub/lobe-chat || {
         step_err "容器启动失败，检查网络。"
@@ -177,11 +182,12 @@ step_lobechat() {
     }
 
     echo ""
-    echo -e "   ${BOLD}API Key 配置位置:${NC}"
-    echo -e "   LobeChat → 右上角 ⚙ → 语言模型 → OpenAI"
-    echo -e "   API 代理: ${CYAN}https://dashscope.aliyuncs.com/compatible-mode/v1${NC}"
-    echo -e "   API Key:  ${YELLOW}← 你自行填入百炼 Key${NC}"
-    echo -e "   模型:     ${CYAN}${DEFAULT_MODEL:-在界面里选}${NC}"
+    if [ -n "$API_KEY" ]; then
+        echo -e "   ${GREEN}${BOLD}✓ API Key 已自动注入，打开浏览器即可使用！${NC}"
+        echo ""
+    fi
+    echo -e "   ${BOLD}访问地址:${NC} ${CYAN}http://localhost:${LOBE_PORT}${NC}"
+    echo -e "   ${BOLD}可用模型:${NC} qwen-turbo / qwen-plus / qwen-max / qwen-max-longcontext"
 }
 
 # ============================================================================
