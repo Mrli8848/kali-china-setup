@@ -195,20 +195,32 @@ step_browser() {
         return
     fi
 
-    if command -v chromium &>/dev/null; then
-        step_ok "Chromium 已安装"
+    # 方法一: 直接下载 .deb
+    step_info "尝试下载 Chrome .deb..."
+    if curl -fsSL -o /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb 2>/dev/null; then
+        apt install -y /tmp/chrome.deb 2>/dev/null && rm -f /tmp/chrome.deb
+    fi
+    rm -f /tmp/chrome.deb
+
+    if command -v google-chrome-stable &>/dev/null; then
+        step_ok "Google Chrome 安装完成 — $(google-chrome-stable --version)"
         return
     fi
 
-    step_info "下载 Google Chrome..."
-    curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -o /tmp/chrome.deb
-    apt install -y /tmp/chrome.deb 2>/dev/null || apt install -f -y 2>/dev/null || true
-    rm -f /tmp/chrome.deb
+    # 方法二: Google APT 源 (更可靠)
+    step_warn ".deb 下载失败，切换 APT 源安装"
+    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg 2>/dev/null
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
+    apt update -y 2>/dev/null || true
+    apt install -y google-chrome-stable 2>/dev/null || true
+    rm -f /etc/apt/sources.list.d/google-chrome.list
 
-    command -v google-chrome-stable &>/dev/null && step_ok "Chrome 安装完成" || {
-        step_warn "Chrome 失败，改用 Chromium"
+    if command -v google-chrome-stable &>/dev/null; then
+        step_ok "Google Chrome 安装完成 — $(google-chrome-stable --version)"
+    else
+        step_warn "Chrome 安装失败，改用 Chromium"
         apt install -y chromium 2>/dev/null || true
-    }
+    fi
 }
 
 # ============================================================================
