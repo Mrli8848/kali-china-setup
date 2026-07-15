@@ -67,44 +67,45 @@ step_docker() {
         return
     fi
 
-    apt remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
     apt update -y
-    apt install -y ca-certificates curl
 
-    local DEBIAN_CODENAME=""
-    local DEBIAN_VER
-    DEBIAN_VER=$(cat /etc/debian_version 2>/dev/null | cut -d. -f1)
+    # 优先 Kali 自带 docker.io，走国内镜像，不受 GFW 干扰
+    step_info "安装 docker.io (Kali 官方源)..."
+    if apt install -y docker.io docker-compose 2>/dev/null; then
+        step_ok "docker.io 安装成功"
+    else
+        # 备用: Docker 官方源
+        step_warn "docker.io 失败，尝试 Docker 官方源..."
 
-    # /etc/debian_version 可能是数字(如 13.0)也可能是 "kali-rolling"
-    case "$DEBIAN_VER" in
-        13)            DEBIAN_CODENAME="trixie" ;;
-        12)            DEBIAN_CODENAME="bookworm" ;;
-        11)            DEBIAN_CODENAME="bullseye" ;;
-        kali-rolling)  ;; # 走 Kali 年份检测
-        *)             ;; # 走 fallback
-    esac
-
-    # 如果 debian_version 不是数字，从 Kali 版本年份反推 Debian 基版
-    if [ -z "$DEBIAN_CODENAME" ]; then
-        local KALI_YEAR
-        KALI_YEAR=$(grep -oP 'VERSION_ID="\K\d{4}' /etc/os-release 2>/dev/null || echo "0")
-        case "$KALI_YEAR" in
-            2026|2025) DEBIAN_CODENAME="trixie" ;;
-            2024|2023) DEBIAN_CODENAME="bookworm" ;;
-            *)         DEBIAN_CODENAME="bookworm" ;;
+        local DEBIAN_CODENAME="" DEBIAN_VER KALI_YEAR
+        DEBIAN_VER=$(cat /etc/debian_version 2>/dev/null | cut -d. -f1)
+        case "$DEBIAN_VER" in
+            13) DEBIAN_CODENAME="trixie" ;;
+            12) DEBIAN_CODENAME="bookworm" ;;
+            11) DEBIAN_CODENAME="bullseye" ;;
+            kali-rolling|*)
+                KALI_YEAR=$(grep -oP 'VERSION_ID="\K\d{4}' /etc/os-release 2>/dev/null || echo "0")
+                case "$KALI_YEAR" in
+                    2026|2025) DEBIAN_CODENAME="trixie" ;;
+                    *)         DEBIAN_CODENAME="bookworm" ;;
+                esac
+                ;;
         esac
+        step_info "Debian 基版: ${DEBIAN_CODENAME}"
+
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${DEBIAN_CODENAME} stable" > /etc/apt/sources.list.d/docker.list
+
+        apt update -y
+        apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin || {
+            step_err "Docker 安装失败，请检查网络"
+            rm -f /etc/apt/sources.list.d/docker.list
+            return 1
+        }
     fi
 
-    step_info "Debian 基版: ${DEBIAN_CODENAME}"
-
-    mkdir -p /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${DEBIAN_CODENAME} stable" > /etc/apt/sources.list.d/docker.list
-
-    apt update -y
-    apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     systemctl enable docker --now 2>/dev/null || true
-
     [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ] && usermod -aG docker "$SUDO_USER" 2>/dev/null || true
     step_ok "Docker 安装完成 — $(docker --version)"
 }
