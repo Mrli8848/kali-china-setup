@@ -167,13 +167,28 @@ install_vulhub() {
         echo ""
     else
         step_info "正在克隆 Vulhub..."
-        git clone --depth 1 https://github.com/vulhub/vulhub.git "$VULHUB_DIR" 2>/dev/null || {
-            step_err "克隆失败！尝试镜像..."
-            git clone --depth 1 https://gitee.com/nuoya99/vulhub.git "$VULHUB_DIR" 2>/dev/null || {
-                step_err "Vulhub 下载完全失败，请手动安装"
-                return 1
-            }
-        }
+        # 多种方式尝试克隆（GitHub 直连可能被墙）
+        local CLONED=0
+
+        step_info "方式1: GitHub 直连..."
+        git clone --depth 1 https://github.com/vulhub/vulhub.git "$VULHUB_DIR" 2>/dev/null && CLONED=1
+
+        if [ $CLONED -eq 0 ]; then
+            step_warn "直连失败 → 方式2: ghproxy 镜像"
+            git clone --depth 1 https://ghproxy.com/https://github.com/vulhub/vulhub.git "$VULHUB_DIR" 2>/dev/null && CLONED=1
+        fi
+
+        if [ $CLONED -eq 0 ]; then
+            step_warn "ghproxy 失败 → 方式3: kgithub 镜像"
+            git clone --depth 1 https://kgithub.com/vulhub/vulhub.git "$VULHUB_DIR" 2>/dev/null && CLONED=1
+        fi
+
+        if [ $CLONED -eq 0 ]; then
+            step_err "Vulhub 下载失败（所有方式均不可达）"
+            step_info "手动安装: git clone https://github.com/vulhub/vulhub.git /opt/vulhub"
+            return 1
+        fi
+
         step_ok "Vulhub → ${VULHUB_DIR}"
     fi
 
