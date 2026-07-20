@@ -114,10 +114,9 @@ step_docker() {
 #  ② LobeChat
 # ============================================================================
 step_lobechat() {
-    banner "② 部署 LobeChat（开机自启 + 自动配置 API）"
+    banner "② 部署 LobeChat（开机自启 + 粘贴 Key 即用）"
 
-    echo -e "   ${DIM}开源聊天 UI | 支持 30+ LLM | 自带 Web Speech 语音输入${NC}"
-    echo -e "   ${DIM}https://github.com/lobehub/lobe-chat${NC}"
+    echo -e "   ${DIM}开源聊天 UI | 自带 Web Speech 语音输入 | 粘贴 Key 即可开聊${NC}"
     echo ""
 
     if ! command -v docker &>/dev/null; then
@@ -127,47 +126,42 @@ step_lobechat() {
 
     docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
-    # API Key — 可在部署时填入，也可跳过后续在 Web 界面配
+    # API Key — 粘贴后一切自动配好，回车跳过后续手动配
     local API_KEY=""
-    echo -e "   ${BOLD}${WHITE}API Key 配置:${NC}"
-    echo -e "   ${DIM}粘贴后脚本自动注入容器，回车跳过则在 Web 界面手动配${NC}"
-    echo ""
-    read -p "$(echo -e "   ${YELLOW}阿里云百炼 API Key [sk-xxx，回车跳过]: ${NC}")" API_KEY
-
-    if [ -n "$API_KEY" ]; then
-        if [[ "$API_KEY" =~ ^sk-[a-zA-Z0-9]+$ ]]; then
-            step_ok "API Key 格式检查通过"
-        else
-            step_warn "API Key 格式异常，但仍会注入（稍后可在 Web 界面修正）"
+    while [ -z "$API_KEY" ]; do
+        echo -ne "   ${YELLOW}粘贴阿里云百炼 API Key [sk-xxx]: ${NC}"
+        read API_KEY
+        if [ -z "$API_KEY" ]; then
+            echo -e "   ${RED}API Key 不能为空！部署后打开即用，不留后事。${NC}"
         fi
+    done
+
+    if [[ "$API_KEY" =~ ^sk-[a-zA-Z0-9]+$ ]]; then
+        step_ok "API Key 格式检查通过"
     else
-        step_info "未提供 API Key — 部署后需在 LobeChat Web 界面手动填入"
+        step_warn "API Key 格式异常，仍继续"
     fi
 
-    # 访问密码
-    local ACCESS_PASSWORD
-    read -p "$(echo -e "   ${YELLOW}设置 LobeChat 访问密码（回车跳过）: ${NC}")" ACCESS_PASSWORD
+    # 访问密码（可选）
+    local ACCESS_PASSWORD=""
+    read -p "$(echo -e "   ${YELLOW}设置访问密码（回车跳过）: ${NC}")" ACCESS_PASSWORD
 
     # 端口
     read -p "$(echo -e "   ${YELLOW}Web 端口 [默认 ${LOBE_PORT}]: ${NC}")" CUSTOM_PORT
     LOBE_PORT="${CUSTOM_PORT:-$LOBE_PORT}"
 
+    # 默认模型
     step_info "拉取镜像（约 500MB）..."
+    echo ""
+    echo -e "   ${DIM}默认模型 qwen-plus，部署后在页面左上角下拉可切换${NC}"
 
-    local DOCKER_ARGS=(-d --name "$CONTAINER_NAME" --restart unless-stopped -p "${LOBE_PORT}:3210")
-
+    local DOCKER_ARGS=(
+        -d --name "$CONTAINER_NAME" --restart unless-stopped -p "${LOBE_PORT}:3210"
+        -e "OPENAI_API_KEY=${API_KEY}"
+        -e "OPENAI_PROXY_URL=https://dashscope.aliyuncs.com/compatible-mode/v1"
+        -e "OPENAI_MODEL_LIST=qwen-turbo,qwen-plus,qwen-max,qwen-max-longcontext"
+    )
     [ -n "$ACCESS_PASSWORD" ] && DOCKER_ARGS+=(-e "ACCESS_CODE=${ACCESS_PASSWORD}")
-
-    # 百炼兼容端点
-    DOCKER_ARGS+=(-e "OPENAI_PROXY_URL=https://dashscope.aliyuncs.com/compatible-mode/v1")
-
-    # 如果用户填了 API Key，直接注入
-    if [ -n "$API_KEY" ]; then
-        DOCKER_ARGS+=(-e "OPENAI_API_KEY=${API_KEY}")
-    fi
-
-    # 预设可用模型列表（百炼兼容端点不支持 Get Model List，需要手动指定）
-    DOCKER_ARGS+=(-e "OPENAI_MODEL_LIST=-all,qwen-turbo,qwen-plus,qwen-max,qwen-max-longcontext")
 
     docker run "${DOCKER_ARGS[@]}" lobehub/lobe-chat || {
         step_err "容器启动失败，检查网络。"
@@ -176,19 +170,20 @@ step_lobechat() {
 
     sleep 3
     docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$" && \
-        step_ok "LobeChat 运行中 — 已设置开机自启 (--restart unless-stopped)" || {
-        step_err "容器异常"
-        docker logs "$CONTAINER_NAME" 2>/dev/null | tail -20
+        step_ok "LobeChat 运行中 — 开机自启已设置" || {
+        step_err "容器异常: docker logs lobe-chat"
         return 1
     }
 
     echo ""
-    if [ -n "$API_KEY" ]; then
-        echo -e "   ${GREEN}${BOLD}✓ API Key 已自动注入，打开浏览器即可使用！${NC}"
-        echo ""
-    fi
+    echo -e "   ${GREEN}${BOLD}✓ 部署完成，打开浏览器即用！${NC}"
+    echo ""
     echo -e "   ${BOLD}访问地址:${NC} ${CYAN}http://localhost:${LOBE_PORT}${NC}"
     echo -e "   ${BOLD}可用模型:${NC} qwen-turbo / qwen-plus / qwen-max / qwen-max-longcontext"
+    echo -e "   ${DIM}（页面左上角下拉选择模型，默认 qwen-plus）${NC}"
+    echo ""
+    echo -e "   ${RED}⚠ 别忘了: 去百炼后台开通你要用的模型 API 调用权限！${NC}"
+    echo -e "   ${CYAN}https://bailian.console.aliyun.com/ → 模型广场 → 搜 qwen-plus → API 调用${NC}"
 }
 
 # ============================================================================
